@@ -150,6 +150,55 @@ pnpm dev
 
 ---
 
+## 🤖 Random Forest crime-risk predictions
+
+The existing `backend/data/city_safety_scores.csv` is the only training source
+(29 city rows, 25 columns). `City` is an identifier; the 21 crime-category
+counts plus `Total Crime Count` are numeric features. `Safe Score` is
+intentionally excluded because the existing rules derive `Safety Zone` from
+the score; including it would leak the target into the features. The existing
+`Safety Zone` category (`Orange`/`Red`) is the supervised target, which keeps
+the model aligned with the current map labels. No data is downloaded or
+generated.
+
+Install the small Python ML runtime and train the persisted artifact:
+
+```bash
+cd backend
+python -m pip install -r ml/requirements.txt
+npm run ml:train
+```
+
+This writes `backend/ml/artifacts/crime_risk_model.joblib` and its readable
+metrics companion JSON. The fixed 70/30 stratified holdout (random state 42)
+currently reports **0.6667 accuracy** on 9 test rows (Orange recall 0.8571,
+Red recall 0.0); the dataset is too small and imbalanced for this to be
+treated as a validated safety guarantee.
+
+The backend exposes model-backed data without changing the existing crime,
+SOS, Twilio, contacts, MongoDB, or Leaflet routes:
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/api/crime-risk` | All CSV rows enriched with prediction probabilities |
+| GET | `/api/crime-risk/:city` | Prediction for one existing city |
+| POST | `/api/crime-risk/predict` | City lookup with `{ "city": "Delhi" }`, or direct features with `{ "features": { "ARSON": 43, "ASSAULT": 47, "...": 33 } }` |
+
+The direct feature payload uses the crime-count columns listed in the model
+metadata JSON. Missing values are imputed by the saved pipeline; unknown
+feature names are ignored. The response contains `predictedSafetyZone` and
+class probabilities. The frontend presents `Orange` as **Medium / Orange**,
+`Red` as **High / Red**, and supports `Green` as **Low / Green** if that class
+is added to a future dataset.
+
+The crime-zones map now loads its labels from `/api/crime-risk`; Leaflet,
+OpenStreetMap tiles, live geolocation, nearby-place lookup, and emergency
+flows remain client-side as before. The Express controller invokes the saved
+Python artifact through `PYTHON_BIN` (defaults to `python`), so production
+deployments should install the documented Python dependencies.
+
+---
+
 ## 🔗 API Routes
 
 | Method | Route | Description |

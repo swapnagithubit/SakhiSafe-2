@@ -2,25 +2,27 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 
-const crimeData = [
-  { city: "Agra", risk: "Orange", total: 764, score: 37.62 },
-  { city: "Ahmedabad", risk: "Red", total: 1817, score: 36.76 },
-  { city: "Bangalore", risk: "Orange", total: 3588, score: 37.93 },
-  { city: "Bhopal", risk: "Orange", total: 690, score: 37.75 },
-  { city: "Chennai", risk: "Red", total: 2493, score: 36.94 },
-  { city: "Delhi", risk: "Red", total: 5400, score: 36.9 },
-  { city: "Faridabad", risk: "Orange", total: 354, score: 37.46 },
-  { city: "Ghaziabad", risk: "Orange", total: 704, score: 38.04 },
-  { city: "Hyderabad", risk: "Orange", total: 2881, score: 37.77 },
-  { city: "Indore", risk: "Red", total: 699, score: 36.37 },
-  { city: "Jaipur", risk: "Orange", total: 1479, score: 37.82 },
-  { city: "Kolkata", risk: "Orange", total: 2518, score: 37.69 },
-  { city: "Lucknow", risk: "Orange", total: 1456, score: 37.62 },
-  { city: "Mumbai", risk: "Orange", total: 4415, score: 37.27 },
-  { city: "Pune", risk: "Orange", total: 2212, score: 38.65 },
-];
+interface CrimeZone {
+  city: string;
+  risk: string;
+  total: string;
+  score: string;
+}
+
+function riskLabel(risk: string) {
+  if (risk === "Red") return "High";
+  if (risk === "Green") return "Low";
+  return "Medium";
+}
+
+function riskClasses(risk: string) {
+  if (risk === "Red") return "bg-red-500/20 text-red-400";
+  if (risk === "Green") return "bg-green-500/20 text-green-400";
+  return "bg-orange-500/20 text-orange-400";
+}
 
 const MAX_RESULTS = 3;
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 const PLACE_TYPES = [
   {
@@ -177,7 +179,12 @@ async function fetchOverpass(
 }
 
 export default function CrimeZonesPage() {
+  const [crimeData, setCrimeData] = useState<CrimeZone[]>([]);
   const [selectedCity, setSelectedCity] =
+    useState("");
+  const [crimeDataLoading, setCrimeDataLoading] =
+    useState(true);
+  const [crimeDataError, setCrimeDataError] =
     useState("");
 
   const [nearestPlaces, setNearestPlaces] =
@@ -198,6 +205,43 @@ export default function CrimeZonesPage() {
   const mapRef = useRef<any>(null);
   const mapObj = useRef<any>(null);
   const leafletRef = useRef<any>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    fetch(`${API_BASE}/api/crime-risk`)
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Crime-risk service is unavailable");
+        }
+        return response.json();
+      })
+      .then((payload) => {
+        if (!active || !Array.isArray(payload.data)) return;
+        setCrimeData(
+          payload.data.map((row: Record<string, string>) => ({
+            city: row.City,
+            total: row["Total Crime Count"],
+            score: row["Safe Score"],
+            risk: row.predictedSafetyZone || row["Safety Zone"],
+          }))
+        );
+      })
+      .catch(() => {
+        if (active) {
+          setCrimeDataError(
+            "Safety predictions could not be loaded. Please try again."
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setCrimeDataLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     navigator.geolocation.getCurrentPosition(
@@ -588,41 +632,51 @@ export default function CrimeZonesPage() {
         </button>
       </div>
 
-      <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {crimeData.map((city) => (
-          <button
-            key={city.city}
-            onClick={() =>
-              openCity(city.city)
-            }
-            className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-3xl p-5 text-left"
-          >
-            <div className="flex justify-between items-center">
-              <h2 className="font-bold text-xl">
-                {city.city}
-              </h2>
+      {crimeDataLoading && (
+        <p className="px-6 py-8 text-blue-400">
+          Loading Random Forest safety predictions...
+        </p>
+      )}
 
-              <span
-                className={`px-3 py-1 rounded-full text-xs font-bold ${
-                  city.risk === "Red"
-                    ? "bg-red-500/20 text-red-400"
-                    : "bg-orange-500/20 text-orange-400"
-                }`}
-              >
-                {city.risk}
-              </span>
-            </div>
+      {crimeDataError && (
+        <p className="px-6 py-8 text-red-400">{crimeDataError}</p>
+      )}
 
-            <p className="text-zinc-400 mt-3">
-              Total Crimes: {city.total}
-            </p>
+      {!crimeDataLoading && !crimeDataError && (
+        <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {crimeData.map((city) => (
+            <button
+              key={city.city}
+              onClick={() =>
+                openCity(city.city)
+              }
+              className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-3xl p-5 text-left"
+            >
+              <div className="flex justify-between items-center">
+                <h2 className="font-bold text-xl">
+                  {city.city}
+                </h2>
 
-            <p className="text-zinc-400">
-              Safety Score: {city.score}
-            </p>
-          </button>
-        ))}
-      </div>
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-bold ${
+                    riskClasses(city.risk)
+                  }`}
+                >
+                  {riskLabel(city.risk)} / {city.risk}
+                </span>
+              </div>
+
+              <p className="text-zinc-400 mt-3">
+                Total Crimes: {city.total}
+              </p>
+
+              <p className="text-zinc-400">
+                Safety Score: {city.score}
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="px-6">
         <div

@@ -9,6 +9,7 @@ const authRoutes = require("./routes/authRoutes");
 const contactRoutes = require("./routes/contactRoutes");
 const sosRoutes = require("./routes/sosRoutes");
 const crimeRoutes = require("./routes/crimeRoutes");
+const crimeRiskRoutes = require("./routes/crimeRiskRoutes");
 const alertRoutes = require("./routes/alertRoutes");
 
 const { loadCSV } = require("./utils/csvLoader");
@@ -48,6 +49,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/contacts", contactRoutes);
 app.use("/api/sos", sosRoutes);
 app.use("/api", crimeRoutes);
+app.use("/api", crimeRiskRoutes);
 app.use("/api/alerts", alertRoutes);
 
 // 🚨 Emergency SMS Alert Route
